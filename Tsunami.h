@@ -11,8 +11,6 @@
 #ifndef _20161015_TSUNAMI_H_
 #define _20161015_TSUNAMI_H_
 
-#define TSUNAMI_NUM_OUTPUTS	8
-
 // ==================================================================
 // The following defines are used to control which serial class is
 //  used. Uncomment only the one you wish to use. If all of them are
@@ -26,6 +24,13 @@
 // ==================================================================
 // If you are using the Arduino Due, uncommoent the following line
 #define __TSUNAMI_USE_DUE_IMPORT__
+// ==================================================================
+
+// ==================================================================
+// If you are using the Tsunami in mono track mode, uncomment the following line
+// Note: You must set the appropriate firmware settings in the config file on the 
+// Tsunami's SD card for the device to use mono mode
+#define __TSUNAMI_USE_MONO__
 // ==================================================================
 
 #define CMD_GET_VERSION				1
@@ -56,9 +61,14 @@
 #define	RSP_STATUS					131
 #define	RSP_TRACK_REPORT			132
 
-#define MAX_MESSAGE_LEN				32
+#ifdef __TSUNAMI_USE_MONO__
+#define MAX_NUM_VOICES				32
+#else
 #define MAX_NUM_VOICES				18
+#endif
+#define MAX_MESSAGE_LEN				32
 #define VERSION_STRING_LEN			23
+#define TSUNAMI_NUM_OUTPUTS			8
 
 #define SOM1	0xf0
 #define SOM2	0xaa
@@ -69,14 +79,14 @@
 #define IMIX_OUT3	0x04
 #define IMIX_OUT4	0x08
 
-#ifdef __TSUNAMI_USE_DUE_IMPORT__
-#include <Arduino.h>
-#endif
-
 #ifdef __TSUNAMI_USE_ALTSOFTSERIAL__
 #include "../AltSoftSerial/AltSoftSerial.h"
 #else
+#ifdef __TSUNAMI_USE_DUE_IMPORT__
+#include <Arduino.h>
+#else
 #include <HardwareSerial.h>
+#endif
 #ifdef __TSUNAMI_USE_SERIAL1__
 #define TsunamiSerial Serial1
 #define __TSUNAMI_SERIAL_ASSIGNED__

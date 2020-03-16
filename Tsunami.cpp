@@ -12,9 +12,16 @@
 
 
 // **************************************************************
+// Starts the serial communication between Arduino and Tsunami (@ 57600 baud)
+// Then flushes the serial port
+// Then Requests version string
+// Then requests system info
 void Tsunami::start(void) {
 
 uint8_t txbuf[5];
+
+	// Initialize variables to invalid state
+	numTracks = -1;
 
 	versionRcvd = false;
 	sysinfoRcvd = false;
@@ -39,6 +46,8 @@ uint8_t txbuf[5];
 }
 
 // **************************************************************
+// Flush: Resets rxCount, rxLen, and rxMsgReady, then writes all 0xFFFF to the voice table
+// then reads from the serial while there are bytes available to clear it
 void Tsunami::flush(void) {
 
 int i;
@@ -55,6 +64,8 @@ int i;
 
 
 // **************************************************************
+// Update function: Call this regularly to ensure messages are read and received
+// and callbacks are triggered
 void Tsunami::update(void) {
 
 int i;
@@ -64,21 +75,29 @@ uint16_t track;
 
 	rxMsgReady = false;
 	while (TsunamiSerial.available() > 0) {
+		// dat is always our most recent data byte
 		dat = TsunamiSerial.read();
+		// Byte 0 should be SOM1
 		if ((rxCount == 0) && (dat == SOM1)) {
 			rxCount++;
 		}
+		// Byte 1 should be SOM2
 		else if (rxCount == 1) {
+			// If byte 1 is SOM2, keep going
 			if (dat == SOM2)
 				rxCount++;
+			// Otherwise, bad message
 			else {
 				rxCount = 0;
 				//Serial.print("Bad msg 1\n");
 			}
 		}
+		// Byte 2 should be message length
 		else if (rxCount == 2) {
+			// If the message length is less than the max message length
 			if (dat <= MAX_MESSAGE_LEN) {
 				rxCount++;
+				// Set our length
 				rxLen = dat - 1;
 			}
 			else {
@@ -86,26 +105,33 @@ uint16_t track;
 				//Serial.print("Bad msg 2\n");
 			}
 		}
+		// Everything past byte 2 but less than expected message length is the rx payload
 		else if ((rxCount > 2) && (rxCount < rxLen)) {
+			// Store payload in rxMessage
 			rxMessage[rxCount - 3] = dat;
 			rxCount++;
 		}
+		// If we're at the expected message length
 		else if (rxCount == rxLen) {
+			// If the last byte is the EOM byte, the message is valid
 			if (dat == EOM)
+			// This is a good place to put a messageReceived callback
 				rxMsgReady = true;
 			else {
 				rxCount = 0;
 				//Serial.print("Bad msg 3\n");
 			}
 		}
+		// Any other pattern of bytes indicates a bad message, reset and set rxCount to 0
 		else {
 			rxCount = 0;
 			//Serial.print("Bad msg 4\n");
 		}
-
+		// If we have a valid message
 		if (rxMsgReady) {
+			// Byte 0 in the payload indicates the rx message type
 			switch (rxMessage[0]) {
-
+				// Track report: sent every time a track starts or stops. Good place for a callback
 				case RSP_TRACK_REPORT:
 					track = rxMessage[2];
 					track = (track << 8) + rxMessage[1] + 1;
@@ -127,18 +153,21 @@ uint16_t track;
 					//	Serial.print(" on\n");
 					// ==========================
 				break;
-
+				// Version string: Sent to the Arduino at somepoint after initialization
 				case RSP_VERSION_STRING:
+					// Copy version string from payload
 					for (i = 0; i < (VERSION_STRING_LEN - 1); i++)
 						version[i] = rxMessage[i + 1];
+					// zero-terminated char array to make it a string
 					version[VERSION_STRING_LEN - 1] = 0;
+					// Mark version received
 					versionRcvd = true;
 					// ==========================
 					//Serial.write(version);
 					//Serial.write("\n");
 					// ==========================
 				break;
-
+				// System info: Indicates max number of voices supported and number of tracks found on SD card
 				case RSP_SYSTEM_INFO:
 					numVoices = rxMessage[1];
 					numTracks = rxMessage[3];
@@ -150,6 +179,7 @@ uint16_t track;
 				break;
 
 			}
+			// Reset rx payload state after this message has been received
 			rxCount = 0;
 			rxLen = 0;
 			rxMsgReady = false;
@@ -160,17 +190,16 @@ uint16_t track;
 }
 
 // **************************************************************
-bool Tsunami::isTrackPlaying(int trk) {
-
-int i;
-bool fResult = false;
+// Returns the channel on which the track number is playing, 
+// or -1 if the track is not playing on any channels
+int Tsunami::isTrackPlaying(int trk) {
 
 	update();
 	for (i = 0; i < MAX_NUM_VOICES; i++) {
 		if (voiceTable[i] == trk)
-			fResult = true;
+			return i;
 	}
-	return fResult;
+	return -1;
 }
 
 // **************************************************************
@@ -180,14 +209,18 @@ uint8_t txbuf[8];
 unsigned short vol;
 uint8_t o;
 
+	// Truncate output channel to proper range (4 stereo or 8 mono channels)
 	o = out & 0x07;
 	txbuf[0] = SOM1;
 	txbuf[1] = SOM2;
 	txbuf[2] = 0x08;
 	txbuf[3] = CMD_MASTER_VOLUME;
 	txbuf[4] = o;
+	// Truncate gain to 16 bit short
 	vol = (unsigned short)gain;
+	// Byte 5 is gain LSB
 	txbuf[5] = (uint8_t)vol;
+	// Byte 6 is gain MSB
 	txbuf[6] = (uint8_t)(vol >> 8);
 	txbuf[7] = EOM;
 	TsunamiSerial.write(txbuf, 8);
@@ -208,6 +241,9 @@ uint8_t txbuf[6];
 }
 
 // **************************************************************
+// Writes the version string to the provided pointer, up to the given length
+// If the write can be performed, returns true. On failure (i.e. if 
+// no version string has been received from Tsunami), returns false
 bool Tsunami::getVersion(char *pDst, int len) {
 
 int i;
@@ -226,6 +262,9 @@ int i;
 }
 
 // **************************************************************
+// Returns the number of tracks found on the SD Card. Must have 
+// enabled reporting to get a correct value. Returns -1 if the
+// Tsunami hasn't provided a number
 int Tsunami::getNumTracks(void) {
 
 	update();
