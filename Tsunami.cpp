@@ -20,9 +20,6 @@ void Tsunami::start(void) {
 
 uint8_t txbuf[5];
 
-	// Initialize variables to invalid state
-	numTracks = -1;
-
 	versionRcvd = false;
 	sysinfoRcvd = false;
   	TsunamiSerial.begin(57600);
@@ -89,7 +86,9 @@ uint16_t track;
 			// Otherwise, bad message
 			else {
 				rxCount = 0;
-				//Serial.print("Bad msg 1\n");
+				#ifdef __TSUNAMI_DEBUG_MODE__
+				Serial.print(F("Bad msg 1\n"));
+				#endif
 			}
 		}
 		// Byte 2 should be message length
@@ -102,7 +101,9 @@ uint16_t track;
 			}
 			else {
 				rxCount = 0;
-				//Serial.print("Bad msg 2\n");
+				#ifdef __TSUNAMI_DEBUG_MODE__
+				Serial.print(F("Bad msg 2\n"));
+				#endif
 			}
 		}
 		// Everything past byte 2 but less than expected message length is the rx payload
@@ -119,22 +120,28 @@ uint16_t track;
 				rxMsgReady = true;
 			else {
 				rxCount = 0;
-				//Serial.print("Bad msg 3\n");
+				#ifdef __TSUNAMI_DEBUG_MODE__
+				Serial.print(F("Bad msg 3\n"));
+				#endif
 			}
 		}
 		// Any other pattern of bytes indicates a bad message, reset and set rxCount to 0
 		else {
 			rxCount = 0;
-			//Serial.print("Bad msg 4\n");
+			#ifdef __TSUNAMI_DEBUG_MODE__
+			Serial.print(F("Bad msg 4\n"));
+			#endif
 		}
 		// If we have a valid message
 		if (rxMsgReady) {
 			// Byte 0 in the payload indicates the rx message type
 			switch (rxMessage[0]) {
 				// Track report: sent every time a track starts or stops. Good place for a callback
+				// This is where the voice table is updated
 				case RSP_TRACK_REPORT:
 					track = rxMessage[2];
 					track = (track << 8) + rxMessage[1] + 1;
+					// Voice is the index within voice table
 					voice = rxMessage[3];
 					if (voice < MAX_NUM_VOICES) {
 						if (rxMessage[4] == 0) {
@@ -144,14 +151,14 @@ uint16_t track;
 						else
 							voiceTable[voice] = track;
 					}
-					// ==========================
-					//Serial.print("Track ");
-					//Serial.print(track);
-					//if (rxMessage[4] == 0)
-					//	Serial.print(" off\n");
-					//else
-					//	Serial.print(" on\n");
-					// ==========================
+					#ifdef __TSUNAMI_DEBUG_MODE__
+					Serial.print("Track ");
+					Serial.print(track);
+					if (rxMessage[4] == 0)
+						Serial.print(" off\n");
+					else
+						Serial.print(" on\n");
+					#endif
 				break;
 				// Version string: Sent to the Arduino at somepoint after initialization
 				case RSP_VERSION_STRING:
@@ -162,10 +169,10 @@ uint16_t track;
 					version[VERSION_STRING_LEN - 1] = 0;
 					// Mark version received
 					versionRcvd = true;
-					// ==========================
-					//Serial.write(version);
-					//Serial.write("\n");
-					// ==========================
+					#ifdef __TSUNAMI_DEBUG_MODE__
+					Serial.write(version);
+					Serial.write("\n");
+					#endif
 				break;
 				// System info: Indicates max number of voices supported and number of tracks found on SD card
 				case RSP_SYSTEM_INFO:
@@ -173,9 +180,9 @@ uint16_t track;
 					numTracks = rxMessage[3];
 					numTracks = (numTracks << 8) + rxMessage[2];
 					sysinfoRcvd = true;
-					// ==========================
-					///\Serial.print("Sys info received\n");
-					// ==========================
+					#ifdef __TSUNAMI_DEBUG_MODE__
+					Serial.print("Sys info received\n");
+					#endif
 				break;
 
 			}
@@ -203,6 +210,7 @@ int Tsunami::isTrackPlaying(int trk) {
 }
 
 // **************************************************************
+// Set master gain on channel out to gain
 void Tsunami::masterGain(int out, int gain) {
 
 uint8_t txbuf[8];
@@ -227,6 +235,8 @@ uint8_t o;
 }
 
 // **************************************************************
+// Enables reporting on tracks from Tsunami -> Arduino
+// Should be called to enable callbacks
 void Tsunami::setReporting(bool enable) {
 
 uint8_t txbuf[6];
@@ -273,6 +283,11 @@ int Tsunami::getNumTracks(void) {
 
 
 // **************************************************************
+// Stops any and all tracks currently playing (on all outputs?) 
+// and starts playing track number trk (1-4096) from the beginning
+// Track is routed to specified stereo (mono or stereo) output
+//
+// - Does it stop all tracks on all outputs, or just the specified one?
 void Tsunami::trackPlaySolo(int trk, int out, bool lock) {
 
 int flags = 0;
@@ -283,6 +298,13 @@ int flags = 0;
 }
 
 // **************************************************************
+// Starts track trk (1-4096) from the beginning, blending it with
+// any other tracks currently playing, including
+// another copy of the same track if already playing. Track is 
+// routed to the specified (mono or stereo) output
+//
+// - Blends with all tracks on the specified output?
+// - What if we're at the max number of voices?
 void Tsunami::trackPlayPoly(int trk, int out, bool lock) {
   
 int flags = 0;
@@ -293,6 +315,10 @@ int flags = 0;
 }
 
 // **************************************************************
+// Loads track trk (1-4096) and pauses it at the beginning. Can be
+// used for multiple tracks and have them all unpaused at same time
+// with resumeAllInSync(). Track is routed to specified (mono or
+// stereo) output
 void Tsunami::trackLoad(int trk, int out, bool lock) {
   
 int flags = 0;
@@ -303,24 +329,40 @@ int flags = 0;
 }
 
 // **************************************************************
+// Stops track trk (1-4096) if its currently playing. No effect if
+// trk is not playing. Does not affect other tracks
 void Tsunami::trackStop(int trk) {
 
 	trackControl(trk, TRK_STOP, 0, 0);
 }
 
 // **************************************************************
+// Pauses track trk (1-4096) if it's currently playing. Does nothing if
+// trk is not playing. Note that a paused track is still using 1 of
+// the (32 mono or 18 stereo) voice slots. A voice allocated to a
+// track is freed only when sound is stopped or track reaches end
+// of file and is not set to loop
 void Tsunami::trackPause(int trk) {
 
 	trackControl(trk, TRK_PAUSE, 0, 0);
 }
 
 // **************************************************************
+// Resumes track trk (1-4096) if it's currently paused. Does nothing
+// if trk is not currently paused
 void Tsunami::trackResume(int trk) {
 
 	trackControl(trk, TRK_RESUME, 0, 0);
 }
 
 // **************************************************************
+// Enables or disables track trk (1-4096) to loop. Does not start
+// the track; only determines behaviour once end of track is reached.
+// If enabled, track will loop until manually stopped, in which
+// case the track is still set to loop. If the loop is disabled
+// and the track is currently playing, it will play until it
+// reaches the end of the file. Can be used before or when the
+// track is playing
 void Tsunami::trackLoop(int trk, bool enable) {
  
 	if (enable)
@@ -330,6 +372,7 @@ void Tsunami::trackLoop(int trk, bool enable) {
 }
 
 // **************************************************************
+// Private internal function that handles all CMD_TRACK_CONTROL commands
 void Tsunami::trackControl(int trk, int code, int out, int flags) {
   
 uint8_t txbuf[10];
@@ -350,6 +393,7 @@ uint8_t o;
 }
 
 // **************************************************************
+// Immediatly stops playing all tracks
 void Tsunami::stopAllTracks(void) {
 
 uint8_t txbuf[5];
@@ -363,6 +407,7 @@ uint8_t txbuf[5];
 }
 
 // **************************************************************
+// Resumes all paused tracks in sync
 void Tsunami::resumeAllInSync(void) {
 
 uint8_t txbuf[5];
@@ -376,6 +421,18 @@ uint8_t txbuf[5];
 }
 
 // **************************************************************
+// Set the gain of the specified track. Gain values are in dB and 
+// range from -70 to +10.
+//
+// This adjusts the gain of an individual track prior to mixing to 
+// the output. If you are playing many tracks to one output, you may
+// need to reduce the gain of each track to avoid clipping in 
+// the output mix buffer.
+//
+// The change in gain is applied smoothly over one audio buffer 
+// (about 3ms) to avoid distortion, but is otherwise immediate. 
+// If you want to smoothly ramp the volume up or down over time, 
+// use the TRACK_FADE command instead.
 void Tsunami::trackGain(int trk, int gain) {
 
 uint8_t txbuf[9];
@@ -395,6 +452,14 @@ unsigned short vol;
 }
 
 // **************************************************************
+// Fade (up or down) a track to a target gain from the current level
+// in the specified number of milliseconds, with an option to stop 
+// the track at the end of the fade.
+//
+// Target gain is specified in dB and range is from -70 to +10. 
+// If Stop Flag = 1, the track will stop at the end of the fade. 
+// This is most useful for implementing a fade out, since Tsunami 
+// will automatically stop the track and release the voice at the end of the fade out.
 void Tsunami::trackFade(int trk, int gain, int time, bool stopFlag) {
 
 uint8_t txbuf[12];
@@ -417,6 +482,12 @@ unsigned short vol;
 }
 
 // **************************************************************
+// Set the sample rate offset for the specified output.
+//
+// Each of Tsunami’s outputs can support it’s own vari-speed control.
+// The offset value ranges from -32768, corresponding to 1/2X speed 
+// (one octave pitch shift down), to +32767, corresponding to 2X 
+// speed (one octave pitch shift up.)
 void Tsunami::samplerateOffset(int out, int offset) {
 
 uint8_t txbuf[8];
@@ -437,6 +508,7 @@ uint8_t o;
 }
 
 // **************************************************************
+// Set the trigger bank
 void Tsunami::setTriggerBank(int bank) {
 
 	uint8_t txbuf[6];
@@ -451,6 +523,11 @@ void Tsunami::setTriggerBank(int bank) {
 }
 
 // **************************************************************
+// Set the input routing mix.
+// 
+// The lowest 4 bits of the mask correspond to the 4 output pairs.
+// A “1” in the position will enable the audio input to be mixed
+// to the corresponding output pair.
 void Tsunami::setInputMix(int mix) {
 
 	uint8_t txbuf[6];
@@ -465,6 +542,7 @@ void Tsunami::setInputMix(int mix) {
 }
 
 // **************************************************************
+// Set MIDI bank
 void Tsunami::setMidiBank(int bank) {
 
 	uint8_t txbuf[6];

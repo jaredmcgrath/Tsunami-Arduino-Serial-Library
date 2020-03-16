@@ -22,7 +22,7 @@
 // ==================================================================
 
 // ==================================================================
-// If you are using the Arduino Due, uncommoent the following line
+// If you are using the Arduino Due, uncomment the following line
 #define __TSUNAMI_USE_DUE_IMPORT__
 // ==================================================================
 
@@ -31,6 +31,11 @@
 // Note: You must set the appropriate firmware settings in the config file on the 
 // Tsunami's SD card for the device to use mono mode
 #define __TSUNAMI_USE_MONO__
+// ==================================================================
+
+// ==================================================================
+// To enable debug prints to Serial, uncomment the following line
+#define __TSUNAMI_DEBUG_MODE__
 // ==================================================================
 
 #define CMD_GET_VERSION				1
@@ -140,15 +145,27 @@ private:
 	AltSoftSerial TsunamiSerial;
 #endif
 
+	// State variables
+	// Voice table: array of track numbers (numbered 1-4096)
+	// Each index represents a single voice, which is either a mono (0-31) or stereo (0-17) track depending on config
 	uint16_t voiceTable[MAX_NUM_VOICES];
+	// A buffer for the last received rx message payload
 	uint8_t rxMessage[MAX_MESSAGE_LEN];
+	// String containing the version string, which is set by Tsunami upon initialization
 	char version[VERSION_STRING_LEN];
+	// Short containing # of tracks, which is set by Tsunami upon initialization
 	uint16_t numTracks;
+	// Byte containing # of voices, which is set by Tsunami upon initialization
 	uint8_t numVoices;
+	// Counter to keep track of current byte index when decoding rx message from serial
 	uint8_t rxCount;
+	// Variable that contains the message length indicated in byte 2 of every rx message
 	uint8_t rxLen;
+	// Bool indicating that there is a valid message ready to be received
 	bool rxMsgReady;
+	// Bool indicating that a valid version string has been received, located in version
 	bool versionRcvd;
+	// Bool indicating that valid system info has been received in numTracks and numVoices
 	bool sysinfoRcvd;
 };
 
