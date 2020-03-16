@@ -23,6 +23,11 @@
 //#define __TSUNAMI_USE_ALTSOFTSERIAL__
 // ==================================================================
 
+// ==================================================================
+// If you are using the Arduino Due, uncommoent the following line
+#define __TSUNAMI_USE_DUE_IMPORT__
+// ==================================================================
+
 #define CMD_GET_VERSION				1
 #define CMD_GET_SYS_INFO			2
 #define CMD_TRACK_CONTROL			3
@@ -64,6 +69,9 @@
 #define IMIX_OUT3	0x04
 #define IMIX_OUT4	0x08
 
+#ifdef __TSUNAMI_USE_DUE_IMPORT__
+#include <Arduino.h>
+#endif
 
 #ifdef __TSUNAMI_USE_ALTSOFTSERIAL__
 #include "../AltSoftSerial/AltSoftSerial.h"
