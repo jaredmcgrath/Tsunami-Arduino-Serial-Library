@@ -120,7 +120,7 @@ public:
 	void setReporting(bool enable);
 	bool getVersion(char *pDst, int len);
 	int getNumTracks(void);
-	bool isTrackPlaying(int trk);
+	int isTrackPlaying(int trk);
 	void masterGain(int out, int gain);
 	void stopAllTracks(void);
 	void resumeAllInSync(void);
@@ -137,6 +137,7 @@ public:
 	void setTriggerBank(int bank);
 	void setInputMix(int mix);
 	void setMidiBank(int bank);
+	void setTrackReportCallback(void (*pFunc)(uint16_t track, uint8_t voice, bool didStart));
 
 private:
 	void trackControl(int trk, int code, int out, int flags);
@@ -144,6 +145,9 @@ private:
 #ifdef __TSUNAMI_USE_ALTSOFTSERIAL__
 	AltSoftSerial TsunamiSerial;
 #endif
+
+	// The callback that is called when a TRACK_REPORT message is received
+	void (*trackReportCallback) (uint16_t track, uint8_t voice, bool didStart);
 
 	// State variables
 	// Voice table: array of track numbers (numbered 1-4096)

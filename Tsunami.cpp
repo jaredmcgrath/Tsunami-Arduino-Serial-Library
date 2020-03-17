@@ -20,6 +20,7 @@ void Tsunami::start(void) {
 
 uint8_t txbuf[5];
 
+	trackReportCallback = NULL;
 	versionRcvd = false;
 	sysinfoRcvd = false;
   	TsunamiSerial.begin(57600);
@@ -151,6 +152,10 @@ uint16_t track;
 						else
 							voiceTable[voice] = track;
 					}
+					// Call the track report callback, if one has been specified
+					if (trackReportCallback) {
+						trackReportCallback(track, voice, rxMessage[4]);
+					}
 					#ifdef __TSUNAMI_DEBUG_MODE__
 					Serial.print("Track ");
 					Serial.print(track);
@@ -197,12 +202,20 @@ uint16_t track;
 }
 
 // **************************************************************
+// Called when a TRACK_REPORT response is received from the Tsunami
+// Indicates that track on voice has changed state. If didStart
+// is true, the track started playing. Otherwisem it has stopped playing
+void Tsunami::setTrackReportCallback(void (*pFunc)(uint16_t track, uint8_t voice, bool didStart)) {
+	trackReportCallback = pFunc;
+}
+
+// **************************************************************
 // Returns the channel on which the track number is playing, 
 // or -1 if the track is not playing on any channels
 int Tsunami::isTrackPlaying(int trk) {
 
 	update();
-	for (i = 0; i < MAX_NUM_VOICES; i++) {
+	for (int i = 0; i < MAX_NUM_VOICES; i++) {
 		if (voiceTable[i] == trk)
 			return i;
 	}
